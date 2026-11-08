@@ -1,0 +1,15 @@
+[package]
+name = "startallforward"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+startallforward-core = { workspace = true }
+startallforward-windows = { workspace = true }
+startallforward-ui = { workspace = true }
+crossbeam-channel = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+eframe = { workspace = true }
