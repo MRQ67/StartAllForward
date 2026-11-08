@@ -1,0 +1,9 @@
+[package]
+name = "startallforward-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Zero dependencies for core tracking logic and models.
