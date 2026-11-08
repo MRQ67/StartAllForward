@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/startallforward-core",
+    "crates/startallforward-windows",
+    "crates/startallforward-ui",
+    "apps/startallforward",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["StartAllForward Contributors"]
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+startallforward-core = { path = "crates/startallforward-core" }
+startallforward-windows = { path = "crates/startallforward-windows" }
+startallforward-ui = { path = "crates/startallforward-ui" }
+crossbeam-channel = "0.5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+eframe = { version = "0.31", default-features = false, features = ["glow", "default_fonts", "accesskit"] }

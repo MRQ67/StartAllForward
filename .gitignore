@@ -1,0 +1,18 @@
+/target
+*.o
+*.obj
+*.exe
+*.pdb
+*.dll
+*.lib
+
+# IDE & Editor caches
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+Thumbs.db
