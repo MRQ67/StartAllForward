@@ -1,0 +1,12 @@
+[package]
+name = "startallforward-ui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+startallforward-core = { workspace = true }
+crossbeam-channel = { workspace = true }
+tracing = { workspace = true }
+eframe = { workspace = true }
