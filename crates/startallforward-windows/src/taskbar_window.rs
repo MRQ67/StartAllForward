@@ -4,11 +4,11 @@ use tracing::{error, info, warn};
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW, CreateSolidBrush,
-    DeleteDC, DeleteObject, DrawTextW, EndPaint, FillRect, InvalidateRect, SelectObject, SetBkMode,
-    SetTextColor, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, FONT_CHARSET,
-    FONT_CLIP_PRECISION, FONT_OUTPUT_PRECISION, FONT_QUALITY, FW_NORMAL, FW_SEMIBOLD, HBRUSH,
-    HFONT, PAINTSTRUCT, SRCCOPY, TRANSPARENT,
+    BeginPaint, BitBlt, ClientToScreen, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW,
+    CreateSolidBrush, DeleteDC, DeleteObject, DrawTextW, EndPaint, FillRect, InvalidateRect,
+    SelectObject, SetBkMode, SetTextColor, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE,
+    DT_VCENTER, FONT_CHARSET, FONT_CLIP_PRECISION, FONT_OUTPUT_PRECISION, FONT_QUALITY, FW_NORMAL,
+    FW_SEMIBOLD, HBRUSH, HFONT, PAINTSTRUCT, SRCCOPY, TRANSPARENT,
 };
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -25,6 +25,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::appbar::{AppBarEdge, AppBarManager, WM_APPBAR_CALLBACK};
 use crate::icon::IconCache;
+use crate::start_menu_window::StartMenuWindow;
 use startallforward_core::{WindowEvent, WindowId, WindowTracker};
 
 const TIMER_REFRESH_ID: usize = 1001;
@@ -62,6 +63,8 @@ pub struct TaskbarState {
     brush_start_normal: HBRUSH,
     brush_start_hover: HBRUSH,
     brush_accent: HBRUSH,
+    start_menu: Option<StartMenuWindow>,
+    start_btn_rect: RECT,
 }
 
 impl TaskbarState {
@@ -135,6 +138,8 @@ impl TaskbarState {
             let brush_start_hover = CreateSolidBrush(COLORREF(0x00403733)); // RGB(51, 55, 64)
             let brush_accent = CreateSolidBrush(COLORREF(0x00D97706)); // Cyan/Blue Amber RGB(6, 119, 217)
 
+            let start_menu = StartMenuWindow::create().ok();
+
             Self {
                 hwnd,
                 appbar: None,
@@ -155,6 +160,8 @@ impl TaskbarState {
                 brush_start_normal,
                 brush_start_hover,
                 brush_accent,
+                start_menu,
+                start_btn_rect: RECT::default(),
             }
         }
     }
@@ -264,6 +271,8 @@ impl TaskbarState {
                 &mut start_text_rc,
                 DT_CENTER | DT_VCENTER | DT_SINGLELINE,
             );
+
+            self.start_btn_rect = start_rc;
 
             button_rects.push(ButtonRect {
                 target: ButtonTarget::Start,
@@ -439,6 +448,30 @@ impl TaskbarState {
                 match btn.target {
                     ButtonTarget::Start => {
                         info!("StartAllForward: Start button clicked");
+                        if let Some(menu) = &mut self.start_menu {
+                            if menu.is_visible() {
+                                menu.hide();
+                            } else {
+                                unsafe {
+                                    let mut pt = POINT {
+                                        x: self.start_btn_rect.left,
+                                        y: self.start_btn_rect.top,
+                                    };
+                                    let _ = ClientToScreen(self.hwnd, &mut pt);
+                                    let btn_w =
+                                        self.start_btn_rect.right - self.start_btn_rect.left;
+                                    let btn_h =
+                                        self.start_btn_rect.bottom - self.start_btn_rect.top;
+                                    let screen_rc = RECT {
+                                        left: pt.x,
+                                        top: pt.y,
+                                        right: pt.x + btn_w,
+                                        bottom: pt.y + btn_h,
+                                    };
+                                    menu.show_at(self.hwnd, self.edge, &screen_rc);
+                                }
+                            }
+                        }
                     }
                     ButtonTarget::Window(id) => {
                         let target_hwnd = HWND(id.0 as *mut _);
@@ -500,6 +533,9 @@ impl Drop for TaskbarState {
             let _ = DeleteObject(self.brush_start_normal.into());
             let _ = DeleteObject(self.brush_start_hover.into());
             let _ = DeleteObject(self.brush_accent.into());
+        }
+        if let Some(menu) = &self.start_menu {
+            menu.destroy();
         }
     }
 }

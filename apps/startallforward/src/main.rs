@@ -4,9 +4,11 @@ use std::time::{Duration, Instant};
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use startallforward_core::WindowTracker;
+use startallforward_core::{AppSearchIndex, WindowTracker};
 use startallforward_ui::DiagnosticApp;
-use startallforward_windows::{AppBarEdge, CustomTaskbar, WindowTrackingService};
+use startallforward_windows::{
+    discover_installed_apps, launch_app, AppBarEdge, CustomTaskbar, WindowTrackingService,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize structured logging
@@ -17,15 +19,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    info!("Starting StartAllForward (Milestone 2)...");
+    info!("Starting StartAllForward (Milestone 3: Native Start Menu & Taskbar)...");
 
     let args: Vec<String> = std::env::args().collect();
     let diagnostic_gui = args.iter().any(|arg| arg == "--diagnostic");
     let cli_mode = args.iter().any(|arg| arg == "--cli" || arg == "--headless");
+    let list_apps = args
+        .iter()
+        .any(|arg| arg == "--list-apps" || arg == "--index-only");
     let test_duration_secs = args
         .windows(2)
         .find(|w| w[0] == "--duration")
         .and_then(|w| w[1].parse::<u64>().ok());
+
+    if list_apps {
+        println!("\n=== StartAllForward: Indexed Desktop & Packaged Applications ===");
+        let apps = discover_installed_apps();
+        println!("Total discovered applications: {}\n", apps.len());
+        for (i, app) in apps.iter().enumerate() {
+            let kind = if app.is_packaged {
+                "[UWP/MSIX]"
+            } else {
+                "[DESKTOP]"
+            };
+            println!(
+                "  {:>3}. {:<10} {:<30} | Target: {}",
+                i + 1,
+                kind,
+                app.name,
+                app.target_path
+            );
+        }
+        return Ok(());
+    }
+
+    if let Some(target_query) = args.windows(2).find(|w| w[0] == "--launch").map(|w| &w[1]) {
+        let apps = discover_installed_apps();
+        let index = AppSearchIndex::new(apps);
+        let matches = index.search(target_query, 1);
+        if let Some(app) = matches.first() {
+            println!(
+                "Found matching application: '{}' ({})",
+                app.name, app.target_path
+            );
+            launch_app(app)?;
+            println!("Application launch requested successfully.");
+        } else {
+            eprintln!("No application matching '{}' found in index.", target_query);
+        }
+        return Ok(());
+    }
 
     let edge = if args.iter().any(|arg| arg == "--bottom" || arg == "-b") {
         AppBarEdge::Bottom
@@ -66,7 +109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_cli_diagnostic(&mut service, test_duration_secs)?;
     } else {
         info!(
-            "Launching Milestone 2 Custom Taskbar (Edge: {:?}, Thickness: {}px)...",
+            "Launching Milestone 2/3 Custom Taskbar with Native Start Menu (Edge: {:?}, Thickness: {}px)...",
             edge, thickness
         );
         run_custom_taskbar(&mut service, edge, thickness, test_duration_secs)?;
