@@ -443,14 +443,19 @@ impl TaskbarState {
     /// Click handler: activates or minimizes the clicked application window.
     fn on_lbutton_up(&mut self, x: i32, y: i32) {
         let pt = POINT { x, y };
+        let mut clicked_btn = false;
+
         for btn in &self.button_layout {
             if pt_in_rect(&btn.rect, pt) {
+                clicked_btn = true;
                 match btn.target {
                     ButtonTarget::Start => {
                         info!("StartAllForward: Start button clicked");
                         if let Some(menu) = &mut self.start_menu {
                             if menu.is_visible() {
                                 menu.hide();
+                            } else if menu.was_recently_hidden() {
+                                // Deactivation just occurred during this click gesture; keep closed
                             } else {
                                 unsafe {
                                     let mut pt = POINT {
@@ -474,11 +479,25 @@ impl TaskbarState {
                         }
                     }
                     ButtonTarget::Window(id) => {
+                        if let Some(menu) = &mut self.start_menu {
+                            if menu.is_visible() {
+                                menu.hide();
+                            }
+                        }
                         let target_hwnd = HWND(id.0 as *mut _);
                         activate_or_toggle_window(target_hwnd);
                     }
                 }
                 break;
+            }
+        }
+
+        if !clicked_btn {
+            // Clicked on empty taskbar area -> dismiss Start Menu if currently visible
+            if let Some(menu) = &mut self.start_menu {
+                if menu.is_visible() {
+                    menu.hide();
+                }
             }
         }
     }

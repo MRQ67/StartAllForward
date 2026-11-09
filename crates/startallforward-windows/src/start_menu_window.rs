@@ -74,6 +74,8 @@ pub struct StartMenuState {
     brush_accent: HBRUSH,
     brush_border: HBRUSH,
     layout: MenuLayout,
+    last_hidden_time: std::time::Instant,
+    visible_item_count: usize,
 }
 
 impl StartMenuState {
@@ -186,6 +188,10 @@ impl StartMenuState {
                     tab_all_rect: RECT::default(),
                     item_rects: Vec::new(),
                 },
+                last_hidden_time: std::time::Instant::now()
+                    .checked_sub(std::time::Duration::from_secs(10))
+                    .unwrap_or_else(std::time::Instant::now),
+                visible_item_count: 9,
             }
         }
     }
@@ -469,6 +475,11 @@ impl StartMenuState {
             let icon_size = (24 * dpi as i32) / 96;
             let footer_h = (36 * dpi as i32) / 96;
             let max_list_bottom = height - footer_h;
+            let item_step = item_h + (2 * dpi as i32) / 96;
+            if item_step > 0 && max_list_bottom > current_y {
+                self.visible_item_count =
+                    ((max_list_bottom - current_y) / item_step).max(1) as usize;
+            }
 
             let mut new_item_rects = Vec::new();
             let mut list_y = current_y;
@@ -668,10 +679,16 @@ impl StartMenuState {
         unsafe {
             let _ = ShowWindow(self.hwnd, SW_HIDE);
         }
+        self.last_hidden_time = std::time::Instant::now();
         self.search_query.clear();
         self.selected_index = 0;
         self.scroll_offset = 0;
         self.hovered_target = None;
+    }
+
+    /// Check if the menu was hidden very recently (within 250ms).
+    pub fn was_recently_hidden(&self) -> bool {
+        self.last_hidden_time.elapsed() < std::time::Duration::from_millis(250)
     }
 
     /// Show and position the Start Menu popup adjacent to the Start button and taskbar.
@@ -696,6 +713,9 @@ impl StartMenuState {
             let work_rc = mi.rcWork;
 
             let gap = (8 * dpi as i32) / 96;
+            let max_avail_h = (work_rc.bottom - work_rc.top - gap * 2).max(300);
+            let height = height.min(max_avail_h);
+
             let top = if edge == AppBarEdge::Bottom {
                 start_btn_screen_rc.top - height - gap
             } else {
@@ -778,6 +798,9 @@ impl StartMenuState {
 
         if target != self.hovered_target {
             self.hovered_target = target;
+            if let Some(MenuClickTarget::AppItem(idx)) = target {
+                self.selected_index = idx;
+            }
             unsafe {
                 let _ = InvalidateRect(Some(self.hwnd), None, false);
             }
@@ -788,8 +811,17 @@ impl StartMenuState {
         let items_len = self.current_items().len();
         match vk.0 as u16 {
             27 => {
-                // VK_ESCAPE
-                self.hide();
+                // VK_ESCAPE: if search query is active, clear it first; otherwise hide
+                if !self.search_query.is_empty() {
+                    self.search_query.clear();
+                    self.selected_index = 0;
+                    self.scroll_offset = 0;
+                    unsafe {
+                        let _ = InvalidateRect(Some(self.hwnd), None, false);
+                    }
+                } else {
+                    self.hide();
+                }
             }
             13 => {
                 // VK_RETURN
@@ -809,8 +841,8 @@ impl StartMenuState {
                 // VK_DOWN
                 if items_len > 0 {
                     self.selected_index = (self.selected_index + 1).min(items_len - 1);
-                    if self.selected_index >= self.scroll_offset + 9 {
-                        self.scroll_offset = self.selected_index.saturating_sub(8);
+                    if self.selected_index >= self.scroll_offset + self.visible_item_count {
+                        self.scroll_offset = self.selected_index + 1 - self.visible_item_count;
                     }
                     unsafe {
                         let _ = InvalidateRect(Some(self.hwnd), None, false);
@@ -958,6 +990,21 @@ impl StartMenuWindow {
             let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut StartMenuState;
             if !ptr.is_null() {
                 (*ptr).is_visible()
+            } else {
+                false
+            }
+        }
+    }
+
+    pub fn was_recently_hidden(&self) -> bool {
+        let hwnd = self.hwnd();
+        if hwnd.is_invalid() || !unsafe { IsWindow(Some(hwnd)).as_bool() } {
+            return false;
+        }
+        unsafe {
+            let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut StartMenuState;
+            if !ptr.is_null() {
+                (*ptr).was_recently_hidden()
             } else {
                 false
             }
